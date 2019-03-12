@@ -61,12 +61,9 @@ class CrossDrawer {
 }
 
 class Range {
-    constructor(x_min, x_max, y_min, y_max) {
-        console.log("construnctor: ", this, x_min, x_max, y_min, y_max);
+    constructor(x_min, x_max) {
         this.x_min = x_min;
         this.x_max = x_max;
-        this.y_min = y_min;
-        this.y_max = y_max;
     }
 }
 
@@ -74,34 +71,14 @@ class Domain extends Range {
     add(other) {
         this.x_min = Math.min(this.x_min, other.x_min);
         this.x_max = Math.max(this.x_max, other.x_max);
-        this.y_min = Math.min(this.y_min, other.y_min);
-        this.y_max = Math.max(this.y_max, other.y_max);
     }
 
     get_transform(other) {
-        //transform from this to other
-        let ax = (other.x_max - other.x_min) / (this.x_max - this.x_min);
-        console.log("ax: ", ax);
-        let bx = other.x_min - this.x_min * ax;
-        console.log("bx: ", bx);
-        let ay = (other.y_max - other.y_min) / (this.y_max - this.y_min);
-        let by = other.y_min - this.y_min * ay;
-        console.log("creating transformation:", this.x_min, this.x_max, this.y_min, this.y_max, "=>", ax, bx, ay, by);
-        return new Transform(ax, bx, ay, by);
-    }
-}
-
-class Transform {
-    constructor(ax, bx, ay, by) {
-        this.ax = ax;
-        this.bx = bx;
-        this.ay = ay;
-        this.by = by;
-    }
-
-    transform(x, y) {
-        console.log("vals:", this.ax, this.bx, this.ay, this.by);
-        return [(this.ax * x + this.bx), (this.ay * y + this.by)]
+        let a = (other.x_max - other.x_min) / (this.x_max - this.x_min);
+        let b = other.x_min - this.x_min * a;
+        return function transform(x) {
+            return a * x + b;
+        }
     }
 }
 
@@ -119,33 +96,34 @@ class Graph {
         }
     }
 
-    draw(range, domain) {
+    draw(range_x, range_y, domain_x, domain_y) {
         //return: svg paths
-        let transform = domain.get_transform(range);
+        let transform_x = domain_x.get_transform(range_x);
+        let transform_y = domain_y.get_transform(range_y);
         let g = document.createElementNS("http://www.w3.org/2000/svg", "g");
         for (const [name, props] of Object.entries(this.yy)) {
             let d = "M 0 0 ";
             for (const [x, y] of zip(this.xx, props.yy)) {
-                let vx, vy;
-                [vx, vy] = transform.transform(x, y);
-                // console.log("transform:", x, y, vx, vy);
-                d += `L ${Math.trunc(vx)} ${Math.trunc(vy)} `
+                d += `L ${Math.trunc(transform_x(x))} ${Math.trunc(transform_y(y))} `
             }
             console.log("path: ", d);
-            let svg_p = document.createElementNS("http://www.w3.org/2000/svg", "path");
-            svg_p.setAttribute("d", d);
-            svg_p.setAttribute("style", `stroke:${props.color}; stroke-width:3; fill: none`);
+            let p = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            p.setAttribute("d", d);
+            p.setAttribute("stroke-linecap", "round");
+            p.setAttribute("style", `stroke:${props.color}; stroke-width:5; fill: none`);
             // console.log(name, props);
-            g.appendChild(svg_p);
+            g.appendChild(p);
         }
         return g;
     }
 
-    get_domain() {
+    get_domains() {
         console.log("constructing domain:", Math.min.apply(null, this.xx));
         let min_y = Math.min.apply(null, Object.values(this.yy).map((g) => Math.min.apply(null, g.yy)));
         let max_y = Math.max.apply(null, Object.values(this.yy).map((g) => Math.max.apply(null, g.yy)));
-        return new Domain(Math.min.apply(null, this.xx), Math.max.apply(null, this.xx), min_y, max_y);
+        return [
+            new Domain(Math.min.apply(null, this.xx), Math.max.apply(null, this.xx)),
+            new Domain(min_y, max_y)];
     };
 }
 
@@ -156,8 +134,10 @@ class Plot {
         // let cd = new CrossDrawer(this.ctx, canvas.width, canvas.height);
         let w = svg.getAttribute("width");
         let h = svg.getAttribute("height");
-        this.range = new Range(0, w, 0, h);
-        this.domain = new Domain(0, 100, 0, 100);
+        this.range_x = new Range(0, w);
+        this.range_y = new Range(h, 0);
+        this.domain_x = new Domain(0, 100);
+        this.domain_y = new Domain(0, 100);
 
         // let ox = canvas.getBoundingClientRect().left + 1;
         // let oy = canvas.getBoundingClientRect().top + 1;
@@ -175,12 +155,16 @@ class Plot {
         let self = this;
         // for (let [k, v] of this.yy){}
 
-        self.domain = self.graps[0].get_domain();
+        [self.domain_x, self.domain_y] = self.graps[0].get_domains();
         this.graps.forEach(function (graph) { //slice [1:]
-            self.domain.add(graph.get_domain())
+            let dx, dy;
+            [dx, dy] = graph.get_domains();
+            self.domain_x.add(dx);
+            self.domain_y.add(dy);
         });
 
-        let svg_paths = this.graps.map((graph) => graph.draw(self.range, self.domain));
+        let svg_paths = this.graps.map((graph) => graph.draw(self.range_x, self.range_y,
+            self.domain_x, self.domain_y));
         console.log(svg_paths);
         return svg_paths;
     }
