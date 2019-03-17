@@ -97,16 +97,27 @@ class Graph {
     }
 
     draw(range_x, range_y, domain_x, domain_y) {
-        //return: svg paths
+        //return: arrays of points in RANGE
         let transform_x = domain_x.get_transform(range_x);
         let transform_y = domain_y.get_transform(range_y);
-        let g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        let points = {};
         for (const [name, props] of Object.entries(this.yy)) {
-            let d = "M 0 0 ";
+            let pp = [];
             for (const [x, y] of zip(this.xx, props.yy)) {
-                d += `L ${Math.trunc(transform_x(x))} ${Math.trunc(transform_y(y))} `
+                pp.push([Math.trunc(transform_x(x)), Math.trunc(transform_y(y))]);
             }
-            console.log("path: ", d);
+            points[name] = {pp: pp, color: props.color};
+        }
+        return points;
+    }
+
+    static draw_svg(points) {
+        let g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        for (const [name, props] of Object.entries(points)) {
+            let d = "M 0 0 ";
+            for (const [x, y] of props.pp) {
+                d += `L ${x} ${y} `
+            }
             let p = document.createElementNS("http://www.w3.org/2000/svg", "path");
             p.setAttribute("d", d);
             p.setAttribute("stroke-linecap", "round");
@@ -163,8 +174,8 @@ class Plot {
             self.domain_y.add(dy);
         });
 
-        let svg_paths = this.graps.map((graph) => graph.draw(self.range_x, self.range_y,
-            self.domain_x, self.domain_y));
+        let svg_paths = this.graps.map((graph) => Graph.draw_svg(graph.draw(self.range_x, self.range_y,
+            self.domain_x, self.domain_y)));
         console.log(svg_paths);
         return svg_paths;
     }
